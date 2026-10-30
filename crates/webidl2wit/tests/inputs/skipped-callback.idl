@@ -1,0 +1,19 @@
+callback Listener = undefined (long value);
+
+interface Source {
+    undefined listen(Listener listener);
+    attribute Listener? handler;
+    undefined stop();
+};
+
+dictionary SourceInit {
+    Listener onReady;
+    boolean autoStart = false;
+};
+
+typedef Listener? OptionalListener;
+
+interface Sink {
+    undefined accept(OptionalListener listener);
+    long count();
+};

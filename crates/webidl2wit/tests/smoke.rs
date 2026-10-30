@@ -165,3 +165,14 @@ fn html_element() {
         },
     );
 }
+
+#[test]
+fn skipped_callback() {
+    compare(
+        "skipped-callback",
+        ConversionOptions {
+            unsupported_features: HandleUnsupported::Warn,
+            ..Default::default()
+        },
+    );
+}
