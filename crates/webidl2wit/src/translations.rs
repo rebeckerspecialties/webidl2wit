@@ -500,9 +500,37 @@ impl State<'_> {
                         }
                     }
                 }
-                weedle::interface::InterfaceMember::Iterable(_) => {
-                    handle_unsupported(interface_name, "iterable", &self.unsupported_features);
-                    continue;
+                weedle::interface::InterfaceMember::Iterable(iterable) => {
+                    // A value iterable yields its values, a pair iterable its entries:
+                    // `iterable<V>` -> `values: func() -> list<V>`,
+                    // `iterable<K, V>` -> `entries: func() -> list<tuple<K, V>>`.
+                    let (name, item_type) = match iterable {
+                        weedle::interface::IterableInterfaceMember::Single(single) => (
+                            "values",
+                            self.wi2w_type(&single.generics.body.type_, false)?,
+                        ),
+                        weedle::interface::IterableInterfaceMember::Double(double) => {
+                            let key = self.wi2w_type(&double.generics.body.0.type_, false)?;
+                            let value = self.wi2w_type(&double.generics.body.2.type_, false)?;
+                            ("entries", wit_encoder::Type::tuple([key, value]))
+                        }
+                    };
+                    let list = wit_encoder::Type::list(item_type);
+                    let name = Ident::new(name);
+                    match &mut functions {
+                        Funcs::Standalone(functions) => {
+                            let mut function =
+                                wit_encoder::StandaloneFunc::new(name.clone(), false);
+                            function.set_result(Some(list));
+                            functions.insert(name, vec![function]);
+                        }
+                        Funcs::Resource(functions) => {
+                            let mut function =
+                                wit_encoder::ResourceFunc::method(name.clone(), false);
+                            function.set_result(Some(list));
+                            functions.insert(name, vec![function]);
+                        }
+                    }
                 }
                 weedle::interface::InterfaceMember::AsyncIterable(_) => {
                     handle_unsupported(

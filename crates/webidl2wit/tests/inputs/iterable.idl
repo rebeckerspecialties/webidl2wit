@@ -1,0 +1,8 @@
+interface ValueList {
+    readonly attribute unsigned long length;
+    iterable<DOMString>;
+};
+
+interface PairMap {
+    iterable<DOMString, long>;
+};
