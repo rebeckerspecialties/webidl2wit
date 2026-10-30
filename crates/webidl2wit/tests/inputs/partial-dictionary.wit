@@ -1,0 +1,12 @@
+package webidl:my-package-idl;
+
+interface my-interface {
+  record options {
+    enabled: option<bool>,
+    label: option<string>,
+  }
+  record later {
+    name: string,
+    priority: option<s32>,
+  }
+}

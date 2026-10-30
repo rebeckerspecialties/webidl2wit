@@ -1,0 +1,16 @@
+dictionary Options {
+    boolean enabled = false;
+};
+
+partial dictionary Options {
+    DOMString label;
+};
+
+// Declared before its dictionary.
+partial dictionary Later {
+    long priority;
+};
+
+dictionary Later {
+    required DOMString name;
+};
