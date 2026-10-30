@@ -4,9 +4,12 @@ use webidl2wit::{ConversionOptions, HandleUnsupported, ResourceInheritance};
 
 fn assert_wit_parses(path: &str) {
     let mut resolve = wit_parser::Resolve::new();
-    resolve
+    let package = resolve
         .push_file(format!("./tests/inputs/{path}.wit"))
         .unwrap();
+    // The text parser accepts shapes the binary format rejects (for example a
+    // record without fields), so also encode the package.
+    wit_component::encode(&resolve, package).unwrap();
 }
 
 fn compare(path: &str, opts: ConversionOptions) {
@@ -62,6 +65,11 @@ fn resource() {
 #[test]
 fn record() {
     compare("record", Default::default());
+}
+
+#[test]
+fn empty_dictionary() {
+    compare("empty-dictionary", Default::default());
 }
 
 #[test]

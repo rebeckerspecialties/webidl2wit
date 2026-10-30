@@ -23,3 +23,4 @@ wit-parser = { workspace = true, features = [ "decoding", "std" ] }
 
 [dev-dependencies]
 similar-asserts = { workspace = true }
+wit-component = "0.248"

@@ -1,0 +1,19 @@
+dictionary ExternalTextureBindingLayout {};
+
+dictionary EmptyBase {};
+
+dictionary EmptyChild : EmptyBase {};
+
+dictionary FilledChild : EmptyBase {
+    boolean flag;
+};
+
+dictionary BindGroupLayoutEntry {
+    required unsigned long binding;
+    ExternalTextureBindingLayout externalTexture;
+};
+
+interface Device {
+    undefined configure(optional EmptyChild options = {});
+    readonly attribute FilledChild settings;
+};
