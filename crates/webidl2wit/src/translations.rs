@@ -164,6 +164,21 @@ pub fn webidl_to_wit(
     }));
     webidl.splice(0..0, prepent);
 
+    // Partial dictionaries extend a dictionary declared elsewhere in the input, possibly later.
+    // Collect their members up front and merge them when the dictionary itself is converted.
+    let mut partial_dictionary_members: HashMap<&str, Vec<weedle::dictionary::DictionaryMember>> =
+        HashMap::new();
+    webidl.retain_mut(|item| match item {
+        Definition::PartialDictionary(partial) => {
+            partial_dictionary_members
+                .entry(partial.identifier.0)
+                .or_default()
+                .append(&mut partial.members.body);
+            false
+        }
+        _ => true,
+    });
+
     let mut package = wit_encoder::Package::new(options.package_name);
 
     // We generate a world or every global singleton.
@@ -285,12 +300,8 @@ pub fn webidl_to_wit(
                 );
                 continue;
             }
-            Definition::PartialDictionary(d) => {
-                handle_unsupported(
-                    d.identifier.0,
-                    "partial dictionary",
-                    &state.unsupported_features,
-                );
+            Definition::PartialDictionary(_) => {
+                // Merged into their dictionary above.
                 continue;
             }
             Definition::PartialNamespace(n) => {
@@ -369,7 +380,10 @@ pub fn webidl_to_wit(
                     is_singleton,
                 )?;
             }
-            Definition::Dictionary(dict) => {
+            Definition::Dictionary(mut dict) => {
+                if let Some(mut members) = partial_dictionary_members.remove(dict.identifier.0) {
+                    dict.members.body.append(&mut members);
+                }
                 let fields = dict
                     .members
                     .body
@@ -402,6 +416,14 @@ pub fn webidl_to_wit(
                 state.interface.type_def(type_def);
             }
         }
+    }
+
+    for name in partial_dictionary_members.keys() {
+        handle_unsupported(
+            name,
+            "partial dictionary without its dictionary",
+            &state.unsupported_features,
+        );
     }
 
     state.handle_resource_inheritance().unwrap();
