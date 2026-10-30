@@ -8,7 +8,10 @@ interface my-interface {
   resource event-target {
     as-window: func() -> option<window>;
   }
-  record structured-serialize-options {  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum structured-serialize-options {
+    empty,
+  }
   resource window {
     window: func() -> window-proxy;
     self: func() -> window-proxy;

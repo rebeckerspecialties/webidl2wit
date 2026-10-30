@@ -406,6 +406,7 @@ pub fn webidl_to_wit(
 
     state.handle_resource_inheritance().unwrap();
     state.handle_record_inheritance().unwrap();
+    state.replace_empty_records();
 
     params_resources_borrow(&mut state.interface, &resource_names);
 
@@ -1057,6 +1058,34 @@ impl State<'_> {
         }
 
         Ok(())
+    }
+
+    /// A dictionary that has no members once inheritance is resolved has no
+    /// valid record encoding: the component model requires at least one field.
+    /// A single-case enum carries the same information (none), encodes, and
+    /// stays valid at every use site including `option<...>`.
+    fn replace_empty_records(&mut self) {
+        for item in self.interface.items_mut().iter_mut() {
+            let InterfaceItem::TypeDef(type_def) = item else {
+                continue;
+            };
+            let is_empty_record = matches!(
+                type_def.kind(),
+                wit_encoder::TypeDefKind::Record(record) if record.fields().is_empty()
+            );
+            if !is_empty_record {
+                continue;
+            }
+            let mut replacement = wit_encoder::TypeDef::enum_(
+                type_def.name().clone(),
+                [wit_encoder::EnumCase::new(ident_name("empty"))],
+            );
+            replacement.set_docs(Some(
+                "WebIDL dictionary without members. A record needs at least one \
+                 field, so this single case stands for the empty dictionary.",
+            ));
+            *type_def = replacement;
+        }
     }
 
     fn handle_record_inheritance(&mut self) -> anyhow::Result<()> {

@@ -23,10 +23,22 @@ interface my-interface {
   }
   resource event {
   }
-  record event-init {  }
-  record predefined-color-space {  }
-  record html-canvas-element {  }
-  record offscreen-canvas {  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum event-init {
+    empty,
+  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum predefined-color-space {
+    empty,
+  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum html-canvas-element {
+    empty,
+  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum offscreen-canvas {
+    empty,
+  }
   record gpu-object-descriptor-base {
     label: option<string>,
   }
@@ -480,7 +492,10 @@ interface my-interface {
     format: gpu-texture-format,
     view-dimension: option<gpu-texture-view-dimension>,
   }
-  record gpu-external-texture-binding-layout {  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum gpu-external-texture-binding-layout {
+    empty,
+  }
   resource gpu-bind-group {
     label: func() -> string;
     set-label: func(label: string);

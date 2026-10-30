@@ -1,0 +1,27 @@
+package webidl:my-package-idl;
+
+interface my-interface {
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum external-texture-binding-layout {
+    empty,
+  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum empty-base {
+    empty,
+  }
+  /// WebIDL dictionary without members. A record needs at least one field, so this single case stands for the empty dictionary.
+  enum empty-child {
+    empty,
+  }
+  record filled-child {
+    flag: option<bool>,
+  }
+  record bind-group-layout-entry {
+    binding: u32,
+    external-texture: option<external-texture-binding-layout>,
+  }
+  resource device {
+    configure: func(options: option<empty-child>);
+    settings: func() -> filled-child;
+  }
+}
