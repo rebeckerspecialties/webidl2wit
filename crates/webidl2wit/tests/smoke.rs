@@ -165,3 +165,8 @@ fn html_element() {
         },
     );
 }
+
+#[test]
+fn partial_dictionary() {
+    compare("partial-dictionary", Default::default());
+}

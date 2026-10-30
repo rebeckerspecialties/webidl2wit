@@ -1,0 +1,10 @@
+package webidl:my-package-idl;
+
+interface my-interface {
+  record options {
+    enabled: option<bool>,
+  }
+  record later {
+    name: string,
+  }
+}
