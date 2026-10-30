@@ -165,3 +165,8 @@ fn html_element() {
         },
     );
 }
+
+#[test]
+fn iterable() {
+    compare("iterable", Default::default());
+}

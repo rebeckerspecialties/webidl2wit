@@ -1,0 +1,11 @@
+package webidl:my-package-idl;
+
+interface my-interface {
+  resource value-list {
+    length: func() -> u32;
+    values: func() -> list<string>;
+  }
+  resource pair-map {
+    entries: func() -> list<tuple<string, s32>>;
+  }
+}
