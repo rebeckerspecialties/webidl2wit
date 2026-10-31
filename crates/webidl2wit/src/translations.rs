@@ -111,8 +111,9 @@ pub(super) struct State<'a> {
     pub waiting_includes: HashMap<String, Vec<Ident>>,
     // TODO: don't treat any as special. Have a set for defined types instead.
     pub any_found: bool,
-    // Definitions that were skipped as unsupported. Members that refer to them are skipped too,
-    // otherwise the output names types that do not exist.
+    // Definitions skipped as unsupported, resolved before conversion so that members referring to
+    // them are skipped too, whichever is declared first. Otherwise the output names types that do
+    // not exist.
     pub skipped_definitions: HashSet<String>,
     pub resource_inheritance: ResourceInheritance,
     // Using BTreeMap for to keep sorting. Otherwise, parent's `as-child` methods don't keep their order
@@ -221,12 +222,14 @@ pub fn webidl_to_wit(
         })
         .collect();
 
-    for item in webidl {
+    // Callbacks are unsupported, and so is every typedef that names one, directly or through
+    // another typedef. Resolve that set before converting anything, so that a consumer declared
+    // ahead of the definition it refers to is skipped as well.
+    for item in &webidl {
         match item {
             Definition::Callback(c) => {
                 handle_unsupported(c.identifier.0, "callback", &state.unsupported_features);
                 state.skipped_definitions.insert(c.identifier.0.to_string());
-                continue;
             }
             Definition::CallbackInterface(c) => {
                 handle_unsupported(
@@ -235,6 +238,40 @@ pub fn webidl_to_wit(
                     &state.unsupported_features,
                 );
                 state.skipped_definitions.insert(c.identifier.0.to_string());
+            }
+            _ => {}
+        }
+    }
+    loop {
+        let mut skipped_typedef = false;
+        for item in &webidl {
+            let Definition::Typedef(typedef) = item else {
+                continue;
+            };
+            if state.skipped_definitions.contains(typedef.identifier.0)
+                || !state.references_skipped(&typedef.type_.type_)
+            {
+                continue;
+            }
+            handle_unsupported(
+                typedef.identifier.0,
+                "typedef of a skipped type",
+                &state.unsupported_features,
+            );
+            state
+                .skipped_definitions
+                .insert(typedef.identifier.0.to_string());
+            skipped_typedef = true;
+        }
+        if !skipped_typedef {
+            break;
+        }
+    }
+
+    for item in webidl {
+        match item {
+            Definition::Callback(_) | Definition::CallbackInterface(_) => {
+                // Reported while resolving the skipped definitions above.
                 continue;
             }
             Definition::InterfaceMixin(mixin) => {
@@ -336,15 +373,8 @@ pub fn webidl_to_wit(
                 continue;
             }
             Definition::Typedef(wi_type) => {
-                if state.references_skipped(&wi_type.type_.type_) {
-                    handle_unsupported(
-                        wi_type.identifier.0,
-                        "typedef of a skipped type",
-                        &state.unsupported_features,
-                    );
-                    state
-                        .skipped_definitions
-                        .insert(wi_type.identifier.0.to_string());
+                if state.skipped_definitions.contains(wi_type.identifier.0) {
+                    // Reported while resolving the skipped definitions above.
                     continue;
                 }
                 let type_ = state.wi2w_type(&wi_type.type_.type_, false)?;

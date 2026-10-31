@@ -10,4 +10,7 @@ interface my-interface {
   resource sink {
     count: func() -> s32;
   }
+  resource early {
+    count: func() -> s32;
+  }
 }

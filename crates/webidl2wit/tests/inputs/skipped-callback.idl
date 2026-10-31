@@ -17,3 +17,15 @@ interface Sink {
     undefined accept(OptionalListener listener);
     long count();
 };
+
+// Consumers declared ahead of the definitions they refer to.
+interface Early {
+    undefined accept(ListenerChain listener);
+    attribute ListenerAlias? handler;
+    undefined notify(LateListener listener);
+    long count();
+};
+
+typedef ListenerAlias ListenerChain;
+typedef Listener ListenerAlias;
+callback LateListener = undefined ();
