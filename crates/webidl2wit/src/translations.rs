@@ -111,6 +111,10 @@ pub(super) struct State<'a> {
     pub waiting_includes: HashMap<String, Vec<Ident>>,
     // TODO: don't treat any as special. Have a set for defined types instead.
     pub any_found: bool,
+    // Definitions skipped as unsupported, resolved before conversion so that members referring to
+    // them are skipped too, whichever is declared first. Otherwise the output names types that do
+    // not exist.
+    pub skipped_definitions: HashSet<String>,
     pub resource_inheritance: ResourceInheritance,
     // Using BTreeMap for to keep sorting. Otherwise, parent's `as-child` methods don't keep their order
     resource_inheritance_map: BTreeMap<Ident, Ident>,
@@ -193,6 +197,7 @@ pub fn webidl_to_wit(
         waiting_resource_methods: HashMap::new(),
         waiting_includes: HashMap::new(),
         any_found: false,
+        skipped_definitions: HashSet::new(),
         resource_inheritance: options.resource_inheritance,
         resource_inheritance_map: BTreeMap::new(),
         record_inheritance_map: BTreeMap::new(),
@@ -217,11 +222,14 @@ pub fn webidl_to_wit(
         })
         .collect();
 
-    for item in webidl {
+    // Callbacks are unsupported, and so is every typedef that names one, directly or through
+    // another typedef. Resolve that set before converting anything, so that a consumer declared
+    // ahead of the definition it refers to is skipped as well.
+    for item in &webidl {
         match item {
             Definition::Callback(c) => {
                 handle_unsupported(c.identifier.0, "callback", &state.unsupported_features);
-                continue;
+                state.skipped_definitions.insert(c.identifier.0.to_string());
             }
             Definition::CallbackInterface(c) => {
                 handle_unsupported(
@@ -229,6 +237,41 @@ pub fn webidl_to_wit(
                     "callback interface",
                     &state.unsupported_features,
                 );
+                state.skipped_definitions.insert(c.identifier.0.to_string());
+            }
+            _ => {}
+        }
+    }
+    loop {
+        let mut skipped_typedef = false;
+        for item in &webidl {
+            let Definition::Typedef(typedef) = item else {
+                continue;
+            };
+            if state.skipped_definitions.contains(typedef.identifier.0)
+                || !state.references_skipped(&typedef.type_.type_)
+            {
+                continue;
+            }
+            handle_unsupported(
+                typedef.identifier.0,
+                "typedef of a skipped type",
+                &state.unsupported_features,
+            );
+            state
+                .skipped_definitions
+                .insert(typedef.identifier.0.to_string());
+            skipped_typedef = true;
+        }
+        if !skipped_typedef {
+            break;
+        }
+    }
+
+    for item in webidl {
+        match item {
+            Definition::Callback(_) | Definition::CallbackInterface(_) => {
+                // Reported while resolving the skipped definitions above.
                 continue;
             }
             Definition::InterfaceMixin(mixin) => {
@@ -330,6 +373,10 @@ pub fn webidl_to_wit(
                 continue;
             }
             Definition::Typedef(wi_type) => {
+                if state.skipped_definitions.contains(wi_type.identifier.0) {
+                    // Reported while resolving the skipped definitions above.
+                    continue;
+                }
                 let type_ = state.wi2w_type(&wi_type.type_.type_, false)?;
                 let type_def = wit_encoder::TypeDef::type_(ident_name(wi_type.identifier.0), type_);
                 state.interface.type_def(type_def);
@@ -374,10 +421,18 @@ pub fn webidl_to_wit(
                     .members
                     .body
                     .iter()
-                    .map(|mem| {
+                    .filter_map(|mem| {
+                        if state.references_skipped(&mem.type_) {
+                            handle_unsupported(
+                                format!("{}.{}", dict.identifier.0, mem.identifier.0),
+                                "dictionary member of a skipped type",
+                                &state.unsupported_features,
+                            );
+                            return None;
+                        }
                         let name = ident_name(mem.identifier.0);
                         let ty = state.wi2w_type(&mem.type_, mem.required.is_none()).unwrap();
-                        (name, ty).into()
+                        Some((name, ty).into())
                     })
                     .collect::<Vec<Field>>();
 
@@ -535,6 +590,14 @@ impl State<'_> {
                     continue;
                 }
                 weedle::interface::InterfaceMember::Attribute(attr) => {
+                    if self.references_skipped(&attr.type_.type_) {
+                        handle_unsupported(
+                            format!("{}.{}", interface_name, attr.identifier.0),
+                            "attribute of a skipped type",
+                            &self.unsupported_features,
+                        );
+                        continue;
+                    }
                     let attr_name = ident_name(attr.identifier.0);
                     let mut attr_type = self.wi2w_type(&attr.type_.type_, false)?;
                     let mut setter_name = attr
@@ -631,6 +694,14 @@ impl State<'_> {
                 }
                 weedle::interface::InterfaceMember::Operation(operation) => {
                     if let Some(identifier) = operation.identifier {
+                        if self.operation_references_skipped(operation) {
+                            handle_unsupported(
+                                format!("{}.{}", interface_name, identifier.0),
+                                "operation using a skipped type",
+                                &self.unsupported_features,
+                            );
+                            continue;
+                        }
                         let function_name = ident_name(identifier.0);
                         let mut async_ = false;
 
@@ -1057,6 +1128,74 @@ impl State<'_> {
         }
 
         Ok(())
+    }
+
+    /// True when the type names a definition that was skipped as unsupported.
+    pub(super) fn references_skipped(&self, type_: &weedle::types::Type) -> bool {
+        use weedle::types::{NonAnyType, ReturnType, SingleType, Type, UnionMemberType};
+
+        fn non_any(state: &State, type_: &NonAnyType) -> bool {
+            match type_ {
+                NonAnyType::Identifier(identifier) => {
+                    state.skipped_definitions.contains(identifier.type_.0)
+                }
+                NonAnyType::Promise(promise) => match &*promise.generics.body {
+                    ReturnType::Undefined(_) => false,
+                    ReturnType::Type(type_) => state.references_skipped(type_),
+                },
+                NonAnyType::Sequence(sequence) => {
+                    state.references_skipped(&sequence.type_.generics.body)
+                }
+                NonAnyType::FrozenArrayType(array) => {
+                    state.references_skipped(&array.type_.generics.body)
+                }
+                NonAnyType::ObservableArrayType(array) => {
+                    state.references_skipped(&array.type_.generics.body)
+                }
+                NonAnyType::RecordType(record) => {
+                    state.references_skipped(&record.type_.generics.body.2)
+                }
+                _ => false,
+            }
+        }
+
+        match type_ {
+            Type::Single(SingleType::Any(_)) => false,
+            Type::Single(SingleType::NonAny(type_)) => non_any(self, type_),
+            Type::Union(union) => union.type_.body.list.iter().any(|member| match member {
+                UnionMemberType::Single(single) => non_any(self, &single.type_),
+                UnionMemberType::Union(nested) => {
+                    nested.type_.body.list.iter().any(|member| match member {
+                        UnionMemberType::Single(single) => non_any(self, &single.type_),
+                        UnionMemberType::Union(_) => false,
+                    })
+                }
+            }),
+        }
+    }
+
+    fn operation_references_skipped(
+        &self,
+        operation: &weedle::interface::OperationInterfaceMember,
+    ) -> bool {
+        let returns_skipped = match &operation.return_type {
+            weedle::types::ReturnType::Undefined(_) => false,
+            weedle::types::ReturnType::Type(type_) => self.references_skipped(type_),
+        };
+        returns_skipped
+            || operation
+                .args
+                .body
+                .list
+                .iter()
+                .any(|argument| match argument {
+                    weedle::argument::Argument::Single(single) => {
+                        self.references_skipped(&single.type_.type_)
+                    }
+                    weedle::argument::Argument::Variadic(variadic) => {
+                        self.references_skipped(&variadic.type_)
+                    }
+                })
     }
 
     fn handle_record_inheritance(&mut self) -> anyhow::Result<()> {

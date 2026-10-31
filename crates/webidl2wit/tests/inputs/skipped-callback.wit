@@ -1,0 +1,16 @@
+package webidl:my-package-idl;
+
+interface my-interface {
+  resource source {
+    stop: func();
+  }
+  record source-init {
+    auto-start: option<bool>,
+  }
+  resource sink {
+    count: func() -> s32;
+  }
+  resource early {
+    count: func() -> s32;
+  }
+}
